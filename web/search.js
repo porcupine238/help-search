@@ -1,5 +1,5 @@
 // Vietnamese-aware article search, independent of the DOM.
-// Scoring: whole-query match on a tag/synonym (+10, once) > per-token tag/synonym word (+4)
+// Scoring: whole-query match on a tag/synonym (+10, once, query of 2+ chars) > per-token tag/synonym word (+4)
 // > per-token title word (+3) > per-token body word (+1). Ties sort by title.
 
 export function normalize(text) {
@@ -35,7 +35,7 @@ export function search(index, query) {
   return index
     .map((entry) => {
       let score = 0;
-      if (entry.terms.some((term) => term.includes(q) || (term.length >= 3 && q.includes(term)))) {
+      if (q.length >= 2 && entry.terms.some((term) => term.includes(q) || (term.length >= 3 && q.includes(term)))) {
         score += 10;
       }
       for (const token of tokens) {

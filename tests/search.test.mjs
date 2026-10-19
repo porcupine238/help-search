@@ -35,3 +35,7 @@ test('truy vấn rỗng hoặc không liên quan trả mảng rỗng', () => {
   assert.deepEqual(ids(''), []);
   assert.deepEqual(ids('xyzabc'), []);
 });
+test('truy vấn 1 ký tự không khớp cả cụm tag/từ đồng nghĩa', () => {
+  assert.deepEqual(ids('a'), []);
+  assert.deepEqual(ids('t'), []);
+});

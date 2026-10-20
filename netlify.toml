@@ -1,0 +1,6 @@
+[build]
+  command = "npm test"
+  publish = "web"
+
+[build.environment]
+  NODE_VERSION = "22"

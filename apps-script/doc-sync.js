@@ -22,12 +22,23 @@ function syncDocs() {
 }
 
 // Menu item: re-exports every linked Doc regardless of its last sync time.
+// The sync runs as the account that clicks, so only accounts in the SYNC_EMAILS script property
+// (comma-separated, each with Editor access to both Drive folders) may run it.
 function syncDocsNow() {
+  var email = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+  var allowed = splitList_(PropertiesService.getScriptProperties().getProperty('SYNC_EMAILS'))
+    .map(function (item) { return item.toLowerCase(); });
+  if (email === '' || allowed.indexOf(email) === -1) {
+    SpreadsheetApp.getUi().alert('Tài khoản ' + (email || 'này') +
+      ' không có quyền đồng bộ ngay. Bài sẽ tự đồng bộ trong tối đa 10 phút.');
+    return;
+  }
   syncDocs_(true);
 }
 
+// Simple trigger: runs for every editor of the sheet; syncDocsNow checks who may actually sync.
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Help Search').addItem('Đồng bộ ngay (chỉ Gmail dự án)', 'syncDocsNow').addToUi();
+  SpreadsheetApp.getUi().createMenu('Help Search').addItem('Đồng bộ ngay', 'syncDocsNow').addToUi();
 }
 
 function syncDocs_(force) {

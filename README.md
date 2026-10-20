@@ -7,7 +7,7 @@ Tra cứu bài hướng dẫn bằng Gmail. Chỉ email có trong tab `Users` (`
 - `web/`: trang tĩnh trên Netlify (`https://watv-tracuu.netlify.app`), đăng nhập bằng Google Identity Services, tìm kiếm phía trình duyệt (`search.js`). Không chứa nội dung bài.
 - `apps-script/`: Apps Script Web App gắn vào Google Sheet `help-search-data`. API này kiểm tra ID token và tab `Users` rồi mới trả bài và ảnh; email ngoài danh sách nhận lỗi `forbidden`.
 - Google Sheet: nơi admin quản trị trực tiếp người dùng, bài viết, ảnh và log truy vấn.
-- Bài có thể soạn trong Google Doc: Apps Script đồng bộ mỗi 10 phút sang cột `body`. Ảnh trong Doc được lưu trong thư mục Drive riêng `help-search-images` (không chia sẻ) và chỉ trả về qua API khi mở bài.
+- Bài có thể soạn trong Google Doc: Apps Script đồng bộ mỗi 10 phút sang cột `body`. Ảnh trong Doc được lưu trong thư mục Drive riêng `help-search-images` (chỉ chia sẻ cho email trong `SYNC_EMAILS`) và chỉ trả về qua API khi mở bài.
 
 ## Chạy test
 
@@ -28,6 +28,8 @@ Luôn dùng `-i <DEPLOYMENT_ID>` để giữ nguyên URL `/exec` trong `web/conf
 
 Cài lần đầu (Gmail dự án, trong Apps Script editor): chạy `setupFolders` (tạo `help-search-images` và `help-search-bai-viet`, log in URL), rồi `installTriggers`. Tab `Articles` cần có các cột `doc`, `doc_synced_at`, `doc_status`.
 
+Người được bấm **Đồng bộ ngay**: Project Settings → Script Properties → `SYNC_EMAILS`, các email phân cách bằng dấu phẩy (gồm cả Gmail dự án). Mỗi email khác Gmail dự án cần quyền sửa Sheet và quyền **Editor** trên cả `help-search-bai-viet` lẫn `help-search-images`, vì đồng bộ chạy bằng chính tài khoản bấm menu; lần đầu bấm sẽ phải cấp quyền Drive. Thu hồi: xóa email khỏi `SYNC_EMAILS` và bỏ chia sẻ hai thư mục.
+
 Trang web tự deploy khi push lên `main`: Netlify chạy `npm test` rồi publish thư mục `web/`; test lỗi thì không deploy.
 
 ## Hướng dẫn admin (trên Google Sheet)
@@ -36,11 +38,11 @@ Trang web tự deploy khi push lên `main`: Netlify chạy `npm test` rồi publ
 - **Bài viết — cách khuyến nghị: Google Docs.** Chia hai vai:
   - *Người soạn* (chỉ có quyền Editor trên thư mục `help-search-bai-viet`, không vào Sheet): tạo Doc **ngay trong thư mục đó**, không để trong thư mục con hay My Drive. Doc tạo ở chỗ khác thì dùng **Di chuyển** vào thư mục (không dùng "Thêm lối tắt"). Soạn bình thường: Heading, danh sách, in đậm, dán ảnh bằng Ctrl+V. Chỉ dùng một tab trong Doc, không dùng bảng phức tạp. Soạn xong gửi link Doc cho admin.
   - *Admin hoặc người được phân quyền sửa Sheet:* dán link Doc vào cột `doc` bằng **Ctrl+Shift+V** để ô giữ nguyên URL `https://docs.google.com/document/d/…`. Nếu ô chỉ hiện tên Doc (khung "chip"), xóa đi và dán lại. Điền `id`, `title`, `tags`, `synonyms`, `status` = `published`.
-  - Trong tối đa 10 phút bài tự cập nhật, kể cả mỗi lần người soạn sửa Doc. Muốn cập nhật ngay thì Gmail dự án bấm menu **Help Search → Đồng bộ ngay (chỉ Gmail dự án)**; tài khoản khác bấm sẽ bị xin quyền Drive và báo lỗi.
+  - Trong tối đa 10 phút bài tự cập nhật, kể cả mỗi lần người soạn sửa Doc. Muốn cập nhật ngay thì bấm menu **Help Search → Đồng bộ ngay**; chỉ email trong `SYNC_EMAILS` bấm được, tài khoản khác nhận thông báo không có quyền và Sheet không bị thay đổi.
   - Cột `doc_status` = `OK` là đồng bộ thành công; khác `OK` là câu báo lỗi. Cột `doc_synced_at` là giờ sửa Doc lần cuối đã được đồng bộ. Bài không cập nhật thì xem hai cột này trước.
   - Khi đã có link Doc, **không sửa tay cột `body`** (sẽ bị ghi đè). Đổi link sang Doc khác thì xóa ô `doc_synced_at` hoặc bấm menu đồng bộ ngay.
   - Bài dài quá 45.000 ký tự, hoặc Doc quá 10MB (thường do dán quá nhiều ảnh chụp màn hình), sẽ báo lỗi; khi đó chia thành nhiều bài.
-  - Bảo mật: chỉ Doc nằm trực tiếp trong `help-search-bai-viet` mới được đồng bộ (Doc ở chỗ khác báo `Lỗi: Doc không nằm trong thư mục help-search-bai-viet`). Ai có quyền Editor trên thư mục đều sửa được nội dung bài đang hiển thị, nên chỉ chia sẻ thư mục cho người soạn tin cậy. Không chia sẻ `help-search-images`. Người soạn không cần quyền vào Sheet.
+  - Bảo mật: chỉ Doc nằm trực tiếp trong `help-search-bai-viet` mới được đồng bộ (Doc ở chỗ khác báo `Lỗi: Doc không nằm trong thư mục help-search-bai-viet`). Ai có quyền Editor trên thư mục đều sửa được nội dung bài đang hiển thị, nên chỉ chia sẻ thư mục cho người soạn tin cậy. Chỉ chia sẻ `help-search-images` cho email trong `SYNC_EMAILS` (họ xem được mọi ảnh của mọi bài). Người soạn không cần quyền vào Sheet.
 - **Bài viết — cách cũ: gõ markdown trong cột `body`.** Điền `id` (không dấu, nối bằng `-`), `title`, `tags` và `synonyms` (phân cách bằng dấu phẩy), `body` (markdown; xuống dòng trong ô bằng Ctrl+Enter), `status` = `published`, để trống cột `doc`.
 - **Ảnh (chỉ cho cách cũ):** mở `tools/image-to-datauri.html` trong trình duyệt và chọn ảnh. Dán kết quả vào cột `data_uri` của tab `Images` và đặt `id`. Trong bài, chèn ảnh bằng `![mô tả](img:<id>)`.
 - **Cải thiện tìm kiếm:** xem tab `ZeroResultLog` (các truy vấn không ra kết quả), rồi thêm những cách gọi đó vào cột `synonyms` của bài phù hợp.

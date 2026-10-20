@@ -38,13 +38,16 @@ function clearAllowlistCache() {
   CacheService.getScriptCache().remove(ALLOWLIST_CACHE_KEY);
 }
 
-// Run once from the editor: authorizes the scopes and installs the on-change trigger.
+// Run once from the editor: authorizes the scopes and installs the on-change trigger
+// and the 10-minute Doc sync trigger.
 function installTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
-    if (trigger.getHandlerFunction() === 'clearAllowlistCache') ScriptApp.deleteTrigger(trigger);
+    var handler = trigger.getHandlerFunction();
+    if (handler === 'clearAllowlistCache' || handler === 'syncDocs') ScriptApp.deleteTrigger(trigger);
   });
   ScriptApp.newTrigger('clearAllowlistCache')
     .forSpreadsheet(SpreadsheetApp.getActive())
     .onChange()
     .create();
+  ScriptApp.newTrigger('syncDocs').timeBased().everyMinutes(10).create();
 }

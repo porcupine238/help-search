@@ -23,6 +23,12 @@ function doPost(e) {
       logZeroResult_(email, request.query);
       return json_({ ok: true });
     }
+    if (request.action === 'image') {
+      var id = String(request.id || '');
+      if (!/^[0-9a-f]{32}$/.test(id)) return json_({ ok: false, error: 'bad_request' });
+      var dataUri = readDriveImage_(id);
+      return json_(dataUri ? { ok: true, id: id, dataUri: dataUri } : { ok: false, error: 'not_found' });
+    }
     return json_({ ok: false, error: 'bad_request' });
   } catch (err) {
     console.error(err);

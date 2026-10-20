@@ -1,0 +1,159 @@
+// Syncs Google Docs linked in Articles.doc into Articles.body and stores their images in a private Drive folder.
+// Only Docs directly inside the shared articles folder are synced; images are only ever read back from the image folder.
+
+var SYNC_TIME_BUDGET_MS = 270000;
+var MAX_BODY_LENGTH = 45000;
+var DRIVE_IMAGE_ID = /^[0-9a-f]{32}$/;
+
+// Run once from the editor: creates the image folder (never shared) and the articles folder (shared with authors).
+function setupFolders() {
+  var properties = PropertiesService.getScriptProperties();
+  [['IMAGE_FOLDER_ID', 'help-search-images'], ['DOCS_FOLDER_ID', 'help-search-bai-viet']].forEach(function (pair) {
+    if (properties.getProperty(pair[0])) return;
+    var folder = DriveApp.createFolder(pair[1]);
+    properties.setProperty(pair[0], folder.getId());
+    console.log(pair[1] + ': ' + folder.getUrl());
+  });
+}
+
+// Time-driven trigger: re-exports only Docs changed since their last sync.
+function syncDocs() {
+  syncDocs_(false);
+}
+
+// Menu item: re-exports every linked Doc regardless of its last sync time.
+function syncDocsNow() {
+  syncDocs_(true);
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Help Search').addItem('Đồng bộ ngay (chỉ Gmail dự án)', 'syncDocsNow').addToUi();
+}
+
+function syncDocs_(force) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return;
+  try {
+    var started = Date.now();
+    var sheet = SpreadsheetApp.getActive().getSheetByName('Articles');
+    var values = sheet.getDataRange().getValues();
+    var header = values[0].map(function (h) { return String(h).trim(); });
+    var col = {};
+    ['doc', 'body', 'doc_synced_at', 'doc_status'].forEach(function (name) {
+      var index = header.indexOf(name);
+      if (index === -1) throw new Error('Thiếu cột ' + name);
+      col[name] = index + 1;
+    });
+    for (var i = 1; i < values.length; i++) {
+      if (Date.now() - started > SYNC_TIME_BUDGET_MS) break;
+      var link = String(values[i][col.doc - 1]).trim();
+      if (link === '') continue;
+      var row = i + 1;
+      var status;
+      try {
+        status = syncRow_(sheet, row, col, link, values[i][col.doc_synced_at - 1], force);
+      } catch (err) {
+        console.error(err);
+        status = 'Lỗi: ' + String(err.message).slice(0, 100);
+      }
+      if (status && status !== 'OK') {
+        sheet.getRange(row, col.doc_status).setValue(status);
+        sheet.getRange(row, col.doc_synced_at).setValue('');
+      }
+      SpreadsheetApp.flush();
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Returns 'OK' after writing the body, null when the Doc is unchanged, or a Vietnamese error message.
+function syncRow_(sheet, row, col, link, syncedAt, force) {
+  var docId = parseDocId_(link);
+  if (!docId) return 'Lỗi: link Doc không hợp lệ';
+  var file;
+  try {
+    file = DriveApp.getFileById(docId);
+  } catch (err) {
+    return 'Lỗi: không mở được Doc (đã chia sẻ cho Gmail dự án chưa?)';
+  }
+  if (file.getMimeType() !== MimeType.GOOGLE_DOCS) return 'Lỗi: link không phải Google Doc';
+  if (!isInDocsFolder_(file)) return 'Lỗi: Doc không nằm trong thư mục help-search-bai-viet';
+  var updated = file.getLastUpdated();
+  // Compare whole seconds: Sheets may drop the milliseconds of a stored date.
+  if (!force && Object.prototype.toString.call(syncedAt) === '[object Date]' &&
+      Math.floor(syncedAt / 1000) >= Math.floor(updated / 1000)) return null;
+  var result = extractImages_(exportDocMarkdown_(docId), md5Hex_);
+  result.images.forEach(saveImage_);
+  if (result.markdown.length > MAX_BODY_LENGTH) return 'Lỗi: bài quá dài, hãy chia thành nhiều bài';
+  sheet.getRange(row, col.body).setValue(sheetSafeText_(result.markdown));
+  sheet.getRange(row, col.doc_synced_at).setValue(updated);
+  sheet.getRange(row, col.doc_status).setValue('OK');
+  return 'OK';
+}
+
+function isInDocsFolder_(file) {
+  var folderId = docsFolderId_();
+  var parents = file.getParents();
+  while (parents.hasNext()) {
+    if (parents.next().getId() === folderId) return true;
+  }
+  return false;
+}
+
+function exportDocMarkdown_(docId) {
+  var response = UrlFetchApp.fetch(
+    'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(docId) + '/export?mimeType=text%2Fmarkdown',
+    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true }
+  );
+  var code = response.getResponseCode();
+  if (code !== 200) {
+    if (response.getContentText().indexOf('exportSizeLimitExceeded') !== -1) {
+      throw new Error('Doc quá lớn để xuất (>10MB, thường do nhiều ảnh), hãy chia bài');
+    }
+    throw new Error('export ' + code);
+  }
+  return response.getContentText('UTF-8');
+}
+
+function md5Hex_(base64) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, Utilities.base64Decode(base64))
+    .map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); })
+    .join('');
+}
+
+function imageFolder_() {
+  var id = PropertiesService.getScriptProperties().getProperty('IMAGE_FOLDER_ID');
+  if (!id) throw new Error('Chưa chạy setupFolders');
+  return DriveApp.getFolderById(id);
+}
+
+function docsFolderId_() {
+  var id = PropertiesService.getScriptProperties().getProperty('DOCS_FOLDER_ID');
+  if (!id) throw new Error('Chưa chạy setupFolders');
+  return id;
+}
+
+// Returns the first non-trashed file with this name in the image folder, or null.
+function findImageFile_(name) {
+  var files = imageFolder_().getFilesByName(name);
+  while (files.hasNext()) {
+    var file = files.next();
+    if (!file.isTrashed()) return file;
+  }
+  return null;
+}
+
+function saveImage_(image) {
+  if (findImageFile_(image.id)) return;
+  imageFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(image.base64), image.mimeType, image.id));
+}
+
+// Looks the id up by name inside the image folder only, so no other Drive file can be read through the API.
+function readDriveImage_(id) {
+  if (!DRIVE_IMAGE_ID.test(id)) return null;
+  var file = findImageFile_(id);
+  if (!file) return null;
+  var blob = file.getBlob();
+  return 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());
+}

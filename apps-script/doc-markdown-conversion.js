@@ -1,7 +1,8 @@
 // Pure helpers for turning a Google Docs Markdown export into an article body.
 // No Google services here, so the tests can load this file in Node.
 
-var DOC_LINK_ID = /\/document\/d\/([A-Za-z0-9_-]{20,})/;
+// Matches /document/d/<id>, /document/u/0/d/<id> and open?id=<id>; non-Doc files are rejected later by MIME type.
+var DOC_LINK_ID = /(?:\/d\/|[?&]id=)([A-Za-z0-9_-]{20,})/;
 var BARE_DOC_ID = /^[A-Za-z0-9_-]{20,}$/;
 var IMAGE_DEFINITION = /^\[([^\]]+)\]:[ \t]*<?data:image\/([a-z0-9.+-]+);base64,([A-Za-z0-9+\/=]+)>?[ \t]*\r?$/gm;
 var IMAGE_REFERENCE = /!\[([^\]]*)\]\[([^\]]+)\]/g;

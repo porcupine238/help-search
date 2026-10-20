@@ -13,7 +13,10 @@ test('parseDocId_ accepts a full link or a bare id and rejects anything else', (
   const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_-0123456789';
   assert.equal(context.parseDocId_(`https://docs.google.com/document/d/${id}/edit?tab=t.0`), id);
   assert.equal(context.parseDocId_(` ${id} `), id);
+  assert.equal(context.parseDocId_(`https://docs.google.com/document/u/0/d/${id}/edit`), id);
+  assert.equal(context.parseDocId_(`https://drive.google.com/open?id=${id}`), id);
   assert.equal(context.parseDocId_('https://example.com'), null);
+  assert.equal(context.parseDocId_('mau-dong-bo'), null);
   assert.equal(context.parseDocId_(''), null);
 });
 

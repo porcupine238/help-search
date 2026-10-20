@@ -257,6 +257,26 @@ function renderArticle(article) {
   window.scrollTo(0, 0);
 }
 
+// Mouse only: while hovering an image shown smaller than its real size, show it at full size inside
+// the same box, panned so the point under the cursor stays under the cursor.
+function zoomImage(event) {
+  const img = event.target;
+  if (event.pointerType !== 'mouse' || !(img instanceof HTMLImageElement)) return;
+  if (img.naturalWidth <= img.clientWidth * 1.2) return;
+  const rect = img.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * 100;
+  const y = ((event.clientY - rect.top) / rect.height) * 100;
+  img.classList.add('zoomed');
+  img.style.objectPosition = `${x}% ${y}%`;
+}
+
+function unzoomImage(event) {
+  const img = event.target;
+  if (!(img instanceof HTMLImageElement)) return;
+  img.classList.remove('zoomed');
+  img.style.objectPosition = '';
+}
+
 // Fetches one Drive image through the API. Docs exports have no alt text, so the image area
 // stays empty until the data arrives or if the request fails.
 async function loadDriveImage(img) {
@@ -323,6 +343,8 @@ function wireEvents() {
     renderResults(results);
     if (results.length === 0) logZeroResult($('search-input').value);
   });
+  $('article-body').addEventListener('pointermove', zoomImage);
+  $('article-body').addEventListener('pointerout', unzoomImage);
   $('back-button').addEventListener('click', () => { location.hash = ''; });
   $('signout-button').addEventListener('click', signOut);
   window.addEventListener('hashchange', route);

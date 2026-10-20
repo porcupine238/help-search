@@ -21,6 +21,12 @@ const loggedQueries = new Set();
 // Cleared with the rest of the data.
 const imageCache = new Map();
 const DRIVE_IMAGE_ID = /^[0-9a-f]{32}$/;
+// Each image is one Apps Script call; too many at once make Apps Script refuse some of them.
+const IMAGE_CONCURRENCY = 3;
+const IMAGE_RETRY_DELAYS_MS = [1000, 3000];
+let imageSlots = IMAGE_CONCURRENCY;
+const imageQueue = [];
+let imageObserver = null;
 
 async function callApi(body) {
   const res = await fetch(CONFIG.API_URL, {
@@ -112,6 +118,7 @@ function wipeData() {
   session = null;
   index = [];
   imageCache.clear();
+  imageObserver?.disconnect();
   clearSession();
   $('result-list').innerHTML = '';
   $('article-body').innerHTML = '';
@@ -249,7 +256,7 @@ function renderArticle(article) {
   });
   const body = $('article-body');
   body.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
-  body.querySelectorAll('img[src^="#img-"]').forEach(loadDriveImage);
+  observeDriveImages(body);
   const heading = document.createElement('h1');
   heading.textContent = article.title;
   body.prepend(heading);
@@ -277,14 +284,36 @@ function unzoomImage(event) {
   img.style.objectPosition = '';
 }
 
-// Fetches one Drive image through the API. Docs exports have no alt text, so the image area
-// stays empty until the data arrives or if the request fails.
+// Drive images load only when they come near the screen, so the first images of an article
+// do not wait behind the ones further down.
+function observeDriveImages(body) {
+  imageObserver?.disconnect();
+  imageObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      imageObserver.unobserve(entry.target);
+      loadDriveImage(entry.target);
+    });
+  }, { rootMargin: '800px 0px' });
+  body.querySelectorAll('img[src^="#img-"]').forEach((img) => {
+    img.dataset.imageId = img.getAttribute('src').slice(5);
+    img.removeAttribute('src');
+    img.classList.add('image-loading');
+    imageObserver.observe(img);
+  });
+}
+
+// Fetches one Drive image through the API. Docs exports have no alt text, so a placeholder holds
+// the space until the data arrives, and a retry button replaces it if the image cannot be loaded.
 async function loadDriveImage(img) {
-  const id = img.getAttribute('src').slice(5);
-  img.removeAttribute('src');
+  const id = img.dataset.imageId;
+  img.classList.remove('image-failed');
+  img.classList.add('image-loading');
   if (!imageCache.has(id)) {
+    // Expired token: keep the placeholder; the session refresh will ask the user to sign in again.
     if (!session || tokenSecondsLeft(session) <= 0) return;
-    const pending = fetchDriveImage(id, session.idToken);
+    const { idToken } = session;
+    const pending = withImageSlot(() => fetchDriveImage(id, idToken));
     imageCache.set(id, pending);
     // A failed lookup is dropped from the cache so a later view retries it.
     pending.then((dataUri) => {
@@ -292,21 +321,66 @@ async function loadDriveImage(img) {
     });
   }
   const dataUri = await imageCache.get(id);
-  if (dataUri && img.isConnected) img.src = dataUri;
+  if (!img.isConnected) return;
+  img.classList.remove('image-loading');
+  if (dataUri) {
+    img.src = dataUri;
+  } else {
+    showImageRetry(img);
+  }
 }
 
-// Resolves to the image data URI, or null when it cannot be shown.
-async function fetchDriveImage(id, idToken) {
-  let res = null;
-  try {
-    res = await callApi({ action: 'image', idToken, id });
-  } catch {
-    // Network error: treated like a missing image.
+function showImageRetry(img) {
+  img.classList.add('image-failed');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'pill-button image-retry';
+  button.textContent = 'Không tải được ảnh. Tải lại';
+  button.addEventListener('click', () => {
+    button.remove();
+    loadDriveImage(img);
+  });
+  img.after(button);
+}
+
+// Runs at most IMAGE_CONCURRENCY image requests at a time; the rest wait in order.
+function withImageSlot(task) {
+  return new Promise((resolve) => {
+    imageQueue.push(() => task().then(resolve, () => resolve(null)).finally(releaseImageSlot));
+    runQueuedImages();
+  });
+}
+
+function runQueuedImages() {
+  while (imageSlots > 0 && imageQueue.length > 0) {
+    imageSlots -= 1;
+    imageQueue.shift()();
   }
-  // The user may have signed out or been revoked while the request was in flight.
-  const ok = session?.idToken === idToken && res?.ok &&
-    typeof res.dataUri === 'string' && res.dataUri.startsWith('data:image/');
-  return ok ? res.dataUri : null;
+}
+
+function releaseImageSlot() {
+  imageSlots += 1;
+  runQueuedImages();
+}
+
+// Resolves to the image data URI, or null when it cannot be shown. Busy or failed requests are
+// retried a few times; a missing image or a rejected token is not.
+async function fetchDriveImage(id, idToken) {
+  for (let attempt = 0; ; attempt += 1) {
+    // The user may have signed out or been revoked while the request waited or was in flight.
+    if (session?.idToken !== idToken) return null;
+    let res = null;
+    try {
+      res = await callApi({ action: 'image', idToken, id });
+    } catch {
+      // Network error, or Apps Script answered with an error page instead of JSON.
+    }
+    if (session?.idToken !== idToken) return null;
+    if (res?.ok && typeof res.dataUri === 'string' && res.dataUri.startsWith('data:image/')) return res.dataUri;
+    const transient = !res || res.error === 'server_error';
+    if (!transient || attempt >= IMAGE_RETRY_DELAYS_MS.length) return null;
+    await new Promise((resolve) => setTimeout(resolve, IMAGE_RETRY_DELAYS_MS[attempt]));
+  }
 }
 
 function route() {

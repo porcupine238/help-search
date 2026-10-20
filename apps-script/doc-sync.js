@@ -6,6 +6,8 @@ var MAX_BODY_LENGTH = 45000;
 // Larger originals keep the exported copy so opening an article stays fast.
 var MAX_ORIGINAL_IMAGE_BYTES = 3 * 1024 * 1024;
 var DRIVE_IMAGE_ID = /^[0-9a-f]{32}$/;
+var IMAGE_FILE_CACHE_PREFIX = 'imagefile:';
+var IMAGE_FILE_CACHE_SECONDS = 21600;
 
 // Run once from the editor: creates the image folder (never shared) and the articles folder (shared with authors).
 function setupFolders() {
@@ -208,20 +210,39 @@ function findImageFile_(name) {
   var files = imageFolder_().getFilesByName(name);
   while (files.hasNext()) {
     var file = files.next();
-    if (!file.isTrashed()) return file;
+    if (!file.isTrashed()) {
+      CacheService.getScriptCache().put(IMAGE_FILE_CACHE_PREFIX + name, file.getId(), IMAGE_FILE_CACHE_SECONDS);
+      return file;
+    }
   }
   return null;
 }
 
+// Same as findImageFile_, but reuses the Drive file id remembered from an earlier search in the image folder,
+// which skips the folder search. Only this script writes those cache entries, so the folder rule still holds.
+function findImageFileCached_(name) {
+  var fileId = CacheService.getScriptCache().get(IMAGE_FILE_CACHE_PREFIX + name);
+  if (fileId) {
+    try {
+      var file = DriveApp.getFileById(fileId);
+      if (!file.isTrashed() && file.getName() === name) return file;
+    } catch (err) {
+      // Deleted since it was cached: fall back to searching the folder.
+    }
+  }
+  return findImageFile_(name);
+}
+
 function saveImage_(image) {
   if (findImageFile_(image.id)) return;
-  imageFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(image.base64), image.mimeType, image.id));
+  var file = imageFolder_().createFile(Utilities.newBlob(Utilities.base64Decode(image.base64), image.mimeType, image.id));
+  CacheService.getScriptCache().put(IMAGE_FILE_CACHE_PREFIX + image.id, file.getId(), IMAGE_FILE_CACHE_SECONDS);
 }
 
 // Looks the id up by name inside the image folder only, so no other Drive file can be read through the API.
 function readDriveImage_(id) {
   if (!DRIVE_IMAGE_ID.test(id)) return null;
-  var file = findImageFile_(id);
+  var file = findImageFileCached_(id);
   if (!file) return null;
   var blob = file.getBlob();
   return 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes());

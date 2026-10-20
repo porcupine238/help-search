@@ -353,3 +353,22 @@ body {
 .brand, .hero-title, .result-title, .article-body h1, .article-body h2, .article-body h3, .page h1 {
   font-variant-numeric: lining-nums;
 }
+
+/* Space held for a Drive image while it loads; the retry button replaces it if loading fails. */
+.article-body img.image-loading {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(100deg, var(--bg-alt) 40%, var(--surface) 50%, var(--bg-alt) 60%) 0 0 / 200% 100%;
+  animation: image-shimmer 1.4s linear infinite;
+}
+
+.article-body img.image-failed { display: none; }
+
+.image-retry { margin: 8px 0; }
+
+@keyframes image-shimmer { to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .article-body img.image-loading { animation: none; }
+}

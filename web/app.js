@@ -17,6 +17,10 @@ let index = [];
 let pollTimer = null;
 let debounceTimer = null;
 const loggedQueries = new Set();
+// Drive images fetched on demand, keyed by id; holds the pending request so duplicates share it.
+// Cleared with the rest of the data.
+const imageCache = new Map();
+const DRIVE_IMAGE_ID = /^[0-9a-f]{32}$/;
 
 async function callApi(body) {
   const res = await fetch(CONFIG.API_URL, {
@@ -107,6 +111,7 @@ function wipeData() {
   stopPolling();
   session = null;
   index = [];
+  imageCache.clear();
   clearSession();
   $('result-list').innerHTML = '';
   $('article-body').innerHTML = '';
@@ -238,15 +243,50 @@ function renderResults(results) {
 }
 
 function renderArticle(article) {
-  const markdown = String(article.body).replace(/\(img:([^)\s]+)\)/g, (match, id) =>
-    session.images[id] ? `(${session.images[id]})` : match);
+  const markdown = String(article.body).replace(/\(img:([^)\s]+)\)/g, (match, id) => {
+    if (session.images[id]) return `(${session.images[id]})`;
+    return DRIVE_IMAGE_ID.test(id) ? `(#img-${id})` : match;
+  });
   const body = $('article-body');
   body.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
+  body.querySelectorAll('img[src^="#img-"]').forEach(loadDriveImage);
   const heading = document.createElement('h1');
   heading.textContent = article.title;
   body.prepend(heading);
   showView('article-view');
   window.scrollTo(0, 0);
+}
+
+// Fetches one Drive image through the API. Docs exports have no alt text, so the image area
+// stays empty until the data arrives or if the request fails.
+async function loadDriveImage(img) {
+  const id = img.getAttribute('src').slice(5);
+  img.removeAttribute('src');
+  if (!imageCache.has(id)) {
+    if (!session || tokenSecondsLeft(session) <= 0) return;
+    const pending = fetchDriveImage(id, session.idToken);
+    imageCache.set(id, pending);
+    // A failed lookup is dropped from the cache so a later view retries it.
+    pending.then((dataUri) => {
+      if (!dataUri && imageCache.get(id) === pending) imageCache.delete(id);
+    });
+  }
+  const dataUri = await imageCache.get(id);
+  if (dataUri && img.isConnected) img.src = dataUri;
+}
+
+// Resolves to the image data URI, or null when it cannot be shown.
+async function fetchDriveImage(id, idToken) {
+  let res = null;
+  try {
+    res = await callApi({ action: 'image', idToken, id });
+  } catch {
+    // Network error: treated like a missing image.
+  }
+  // The user may have signed out or been revoked while the request was in flight.
+  const ok = session?.idToken === idToken && res?.ok &&
+    typeof res.dataUri === 'string' && res.dataUri.startsWith('data:image/');
+  return ok ? res.dataUri : null;
 }
 
 function route() {

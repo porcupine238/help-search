@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nén ảnh thành data URI</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.5; background: #fff; color: #1f2328; }
+    @media (prefers-color-scheme: dark) { body { background: #0d1117; color: #e6edf3; } }
+    main { max-width: 760px; margin: 0 auto; padding: 16px; }
+    textarea { width: 100%; height: 140px; font-family: monospace; font-size: 12px; }
+    img { max-width: 100%; border: 1px solid #d1d9e0; }
+    code { background: rgba(127, 127, 127, 0.15); padding: 1px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Nén ảnh thành data URI</h1>
+    <ol>
+      <li>Chọn ảnh. Công cụ tự nén về WebP, tối đa 45.000 ký tự.</li>
+      <li>Bấm "Sao chép", dán vào cột <code>data_uri</code> của tab <code>Images</code>, đặt một <code>id</code> ngắn (ví dụ <code>quen-mk-b1</code>).</li>
+      <li>Trong cột <code>body</code> của bài viết, chèn ảnh bằng <code>![mô tả](img:&lt;id&gt;)</code>.</li>
+    </ol>
+    <input id="file" type="file" accept="image/*">
+    <p id="info"></p>
+    <p><img id="preview" alt="" hidden></p>
+    <textarea id="output" readonly></textarea>
+    <p><button id="copy" type="button" disabled>Sao chép</button></p>
+  </main>
+  <script>
+    const MAX_CHARS = 45000;
+    const MAX_WIDTH = 1000;
+
+    function encode(img, width, quality) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width);
+      canvas.height = Math.round(img.naturalHeight * (width / img.naturalWidth));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/webp', quality);
+    }
+
+    // Lower quality from 0.7 to 0.3 first, then shrink the width by 20% per step.
+    function compress(img) {
+      let width = Math.min(MAX_WIDTH, img.naturalWidth);
+      let quality = 0.7;
+      let uri = encode(img, width, quality);
+      while (uri.length > MAX_CHARS && quality > 0.31) {
+        quality = Math.round((quality - 0.1) * 10) / 10;
+        uri = encode(img, width, quality);
+      }
+      while (uri.length > MAX_CHARS && width > 50) {
+        width *= 0.8;
+        uri = encode(img, width, quality);
+      }
+      return { uri, width: Math.round(width), quality };
+    }
+
+    document.getElementById('file').addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        const { uri, width, quality } = compress(img);
+        URL.revokeObjectURL(img.src);
+        document.getElementById('output').value = uri;
+        document.getElementById('info').textContent =
+          `Độ dài: ${uri.length.toLocaleString('vi')} ký tự (giới hạn 45.000) · rộng ${width}px · chất lượng ${quality}`;
+        const preview = document.getElementById('preview');
+        preview.src = uri;
+        preview.hidden = false;
+        document.getElementById('copy').disabled = false;
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    document.getElementById('copy').addEventListener('click', async () => {
+      const button = document.getElementById('copy');
+      await navigator.clipboard.writeText(document.getElementById('output').value);
+      button.textContent = 'Đã sao chép';
+      setTimeout(() => { button.textContent = 'Sao chép'; }, 1500);
+    });
+  </script>
+</body>
+</html>

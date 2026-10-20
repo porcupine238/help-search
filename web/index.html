@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tra cứu hướng dẫn</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="container">
+    <header class="app-header">
+      <h1>Tra cứu hướng dẫn</h1>
+    </header>
+
+    <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+    <section id="signin-view" hidden>
+      <p>Đăng nhập bằng Gmail đã được cấp quyền để tra cứu bài hướng dẫn.</p>
+      <div id="signin-button"></div>
+    </section>
+
+    <section id="search-view" hidden>
+      <div class="user-bar">
+        <span id="user-email"></span>
+        <button id="signout-button" type="button" class="link-button">Đăng xuất</button>
+      </div>
+      <form id="search-form" role="search">
+        <input id="search-input" type="search" autocomplete="off"
+          placeholder="Bạn cần hướng dẫn gì? Ví dụ: quên mật khẩu" aria-label="Tìm bài hướng dẫn">
+      </form>
+      <ul id="result-list" class="result-list"></ul>
+    </section>
+
+    <section id="article-view" hidden>
+      <button id="back-button" type="button" class="link-button">← Quay lại</button>
+      <article id="article-body" class="article-body"></article>
+    </section>
+
+    <footer class="app-footer"><a href="privacy.html">Chính sách quyền riêng tư</a></footer>
+  </main>
+
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"
+    integrity="sha512-xeUh+KxNyTufZOje++oQHstlMQ8/rpyzPuM+gjMFYK3z5ILJGE7l2NvYL+XfliKURMpBIKKp1XoPN/qswlSMFA=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"
+    integrity="sha512-jB0TkTBeQC9ZSkBqDhdmfTv1qdfbWpGE72yJ/01Srq6hEzZIz2xkz1e57p9ai7IeHMwEG7HpzG6NdptChif5Pg=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

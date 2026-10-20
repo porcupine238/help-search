@@ -4,19 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tra cứu hướng dẫn</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="container">
-    <header class="app-header">
-      <h1>Tra cứu hướng dẫn</h1>
-    </header>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a href="./" class="brand">Tra cứu.</a>
+      <span class="brand-note">Hướng dẫn nội bộ</span>
+    </div>
+  </header>
 
+  <main class="container">
     <div id="status" class="status" role="status" aria-live="polite" hidden></div>
 
-    <section id="signin-view" hidden>
-      <p>Đăng nhập bằng Gmail đã được cấp quyền để tra cứu bài hướng dẫn.</p>
-      <div id="signin-button"></div>
+    <section id="signin-view" class="hero" hidden>
+      <p class="eyebrow">Thư viện hướng dẫn</p>
+      <h1 class="hero-title">Tìm câu trả lời <em>trong vài giây</em></h1>
+      <p class="hero-lead">Đăng nhập bằng Gmail đã được cấp quyền để tra cứu bài hướng dẫn.</p>
+      <div class="signin-card">
+        <div id="signin-button"></div>
+      </div>
     </section>
 
     <section id="search-view" hidden>
@@ -24,15 +34,22 @@
         <span id="user-email"></span>
         <button id="signout-button" type="button" class="link-button">Đăng xuất</button>
       </div>
-      <form id="search-form" role="search">
+      <div class="hero">
+        <p class="eyebrow">Thư viện hướng dẫn</p>
+        <h1 class="hero-title">Bạn cần <em>hướng dẫn</em> gì?</h1>
+      </div>
+      <form id="search-form" class="search-form" role="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
+        </svg>
         <input id="search-input" type="search" autocomplete="off"
-          placeholder="Bạn cần hướng dẫn gì? Ví dụ: quên mật khẩu" aria-label="Tìm bài hướng dẫn">
+          placeholder="Ví dụ: quên mật khẩu" aria-label="Tìm bài hướng dẫn">
       </form>
       <ul id="result-list" class="result-list"></ul>
     </section>
 
     <section id="article-view" hidden>
-      <button id="back-button" type="button" class="link-button">← Quay lại</button>
+      <button id="back-button" type="button" class="pill-button">← Quay lại</button>
       <article id="article-body" class="article-body"></article>
     </section>
 

@@ -34,8 +34,7 @@ function readArticles_() {
         title: String(r.title),
         tags: splitList_(r.tags),
         synonyms: splitList_(r.synonyms),
-        body: String(r.body),
-        visibility: String(r.visibility || '')
+        body: String(r.body)
       };
     });
 }

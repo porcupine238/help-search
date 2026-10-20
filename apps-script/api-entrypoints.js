@@ -1,4 +1,4 @@
-// Web app entry points. No sheet data is returned before the ID token is verified; restricted articles also require the Users list.
+// Web app entry points. No sheet data is returned before the token and allowlist checks pass.
 
 function doGet() {
   return json_({ ok: true, service: 'help-search' });
@@ -15,9 +15,9 @@ function doPost(e) {
   try {
     var email = verifyIdToken_(request.idToken);
     if (!email) return json_({ ok: false, error: 'invalid_token' });
+    if (!isAllowed_(email)) return json_({ ok: false, error: 'forbidden' });
     if (request.action === 'bootstrap') {
-      var visible = filterForReader_(readArticles_(), readImages_(), isAllowed_(email));
-      return json_({ ok: true, email: email, articles: visible.articles, images: visible.images });
+      return json_({ ok: true, email: email, articles: readArticles_(), images: readImages_() });
     }
     if (request.action === 'logZero') {
       logZeroResult_(email, request.query);

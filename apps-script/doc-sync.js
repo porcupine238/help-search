@@ -3,6 +3,8 @@
 
 var SYNC_TIME_BUDGET_MS = 270000;
 var MAX_BODY_LENGTH = 45000;
+// Larger originals keep the exported copy so opening an article stays fast.
+var MAX_ORIGINAL_IMAGE_BYTES = 3 * 1024 * 1024;
 var DRIVE_IMAGE_ID = /^[0-9a-f]{32}$/;
 
 // Run once from the editor: creates the image folder (never shared) and the articles folder (shared with authors).
@@ -94,7 +96,9 @@ function syncRow_(sheet, row, col, link, syncedAt, force) {
   // Compare whole seconds: Sheets may drop the milliseconds of a stored date.
   if (!force && Object.prototype.toString.call(syncedAt) === '[object Date]' &&
       Math.floor(syncedAt / 1000) >= Math.floor(updated / 1000)) return null;
-  var result = extractImages_(exportDocMarkdown_(docId), md5Hex_);
+  var markdown = exportDocMarkdown_(docId);
+  var originals = markdown.indexOf('data:image/') === -1 ? null : fetchOriginalImages_(docId);
+  var result = extractImages_(markdown, md5Hex_, originals);
   result.images.forEach(saveImage_);
   if (result.markdown.length > MAX_BODY_LENGTH) return 'Lỗi: bài quá dài, hãy chia thành nhiều bài';
   sheet.getRange(row, col.body).setValue(sheetSafeText_(result.markdown));
@@ -125,6 +129,60 @@ function exportDocMarkdown_(docId) {
     throw new Error('export ' + code);
   }
   return response.getContentText('UTF-8');
+}
+
+// The Markdown export scales images down to their size on the page; the Docs API links to the originals.
+// Returns one { type, base64 } or null per inline object in body order, or null if the Docs API call fails,
+// in which case the exported copies are kept.
+function fetchOriginalImages_(docId) {
+  var doc;
+  try {
+    doc = Docs.Documents.get(docId);
+  } catch (err) {
+    console.warn('Docs API: ' + err.message);
+    return null;
+  }
+  var ids = [];
+  collectInlineObjectIds_(doc.body && doc.body.content, ids);
+  var uris = ids.map(function (id) {
+    var object = doc.inlineObjects && doc.inlineObjects[id];
+    var embedded = object && object.inlineObjectProperties && object.inlineObjectProperties.embeddedObject;
+    return (embedded && embedded.imageProperties && embedded.imageProperties.contentUri) || null;
+  });
+  var requests = uris.filter(Boolean).map(function (uri) { return { url: uri, muteHttpExceptions: true }; });
+  var responses;
+  try {
+    responses = requests.length ? UrlFetchApp.fetchAll(requests) : [];
+  } catch (err) {
+    console.warn('Tải ảnh gốc: ' + err.message);
+    return null;
+  }
+  return uris.map(function (uri) {
+    if (!uri) return null;
+    var response = responses.shift();
+    if (response.getResponseCode() !== 200) return null;
+    var blob = response.getBlob();
+    var type = String(blob.getContentType() || '');
+    var bytes = blob.getBytes();
+    if (type.indexOf('image/') !== 0 || bytes.length > MAX_ORIGINAL_IMAGE_BYTES) return null;
+    return { type: type.slice(6), base64: Utilities.base64Encode(bytes) };
+  });
+}
+
+function collectInlineObjectIds_(content, ids) {
+  (content || []).forEach(function (element) {
+    if (element.paragraph) {
+      (element.paragraph.elements || []).forEach(function (item) {
+        if (item.inlineObjectElement) ids.push(item.inlineObjectElement.inlineObjectId);
+      });
+    }
+    if (element.table) {
+      (element.table.tableRows || []).forEach(function (row) {
+        (row.tableCells || []).forEach(function (cell) { collectInlineObjectIds_(cell.content, ids); });
+      });
+    }
+    if (element.tableOfContents) collectInlineObjectIds_(element.tableOfContents.content, ids);
+  });
 }
 
 function md5Hex_(base64) {

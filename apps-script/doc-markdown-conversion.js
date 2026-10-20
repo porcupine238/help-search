@@ -5,8 +5,8 @@
 var DOC_LINK_ID = /(?:\/d\/|[?&]id=)([A-Za-z0-9_-]{20,})/;
 var BARE_DOC_ID = /^[A-Za-z0-9_-]{20,}$/;
 var IMAGE_DEFINITION = /^\[([^\]]+)\]:[ \t]*<?data:image\/([a-z0-9.+-]+);base64,([A-Za-z0-9+\/=]+)>?[ \t]*\r?$/gm;
-var IMAGE_REFERENCE = /!\[([^\]]*)\]\[([^\]]+)\]/g;
-var INLINE_IMAGE = /!\[([^\]]*)\]\(data:image\/([a-z0-9.+-]+);base64,([A-Za-z0-9+\/=]+)\)/g;
+// One pattern for ![alt][ref] and inline ![alt](data:...) so images are visited in document order.
+var IMAGE_ELEMENT = /!\[([^\]]*)\](?:\[([^\]]+)\]|\(data:image\/([a-z0-9.+-]+);base64,([A-Za-z0-9+\/=]+)\))/g;
 
 // Accepts a Doc link or a bare Doc ID; returns the ID or null.
 function parseDocId_(value) {
@@ -18,7 +18,9 @@ function parseDocId_(value) {
 
 // Replaces embedded base64 images with img:<id> links and returns the images once each.
 // Only the end of the text is trimmed: trailing double spaces inside are Markdown hard breaks.
-function extractImages_(markdown, hashBase64) {
+// originals (optional) holds one { type, base64 } or null per image in document order; it replaces the
+// exported copies only when its length matches the images found, so an image is never paired with the wrong one.
+function extractImages_(markdown, hashBase64, originals) {
   var images = [];
   var seen = {};
   function addImage(type, base64) {
@@ -35,12 +37,24 @@ function extractImages_(markdown, hashBase64) {
     refs[ref] = { type: type, base64: base64 };
     return '';
   });
-  text = text.replace(IMAGE_REFERENCE, function (match, alt, ref) {
-    var image = refs[ref];
-    return image ? '![' + alt + '](img:' + addImage(image.type, image.base64) + ')' : match;
+  function exported(ref, type, base64) {
+    return ref ? refs[ref] : { type: type, base64: base64 };
+  }
+
+  var count = 0;
+  text.replace(IMAGE_ELEMENT, function (match, alt, ref, type, base64) {
+    if (exported(ref, type, base64)) count++;
+    return match;
   });
-  text = text.replace(INLINE_IMAGE, function (match, alt, type, base64) {
-    return '![' + alt + '](img:' + addImage(type, base64) + ')';
+  var useOriginals = Array.isArray(originals) && originals.length === count;
+  var index = 0;
+  text = text.replace(IMAGE_ELEMENT, function (match, alt, ref, type, base64) {
+    var image = exported(ref, type, base64);
+    if (!image) return match;
+    var original = useOriginals ? originals[index] : null;
+    index++;
+    if (original) image = original;
+    return '![' + alt + '](img:' + addImage(image.type, image.base64) + ')';
   });
   return { markdown: text.replace(/\s+$/, ''), images: images };
 }

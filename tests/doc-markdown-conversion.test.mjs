@@ -75,3 +75,29 @@ test('sheetSafeText_ escapes formula-like starts only', () => {
   assert.equal(context.sheetSafeText_('- mục'), "'- mục");
   assert.equal(context.sheetSafeText_('## Các bước'), '## Các bước');
 });
+
+const extractWith = (markdown, originals) =>
+  JSON.parse(JSON.stringify(context.extractImages_(markdown, hash, originals)));
+
+test('originals replace exported copies in document order', () => {
+  const md = '![a][image2] ![b](data:image/png;base64,AA) ![c][image1]\n\n' +
+    '[image1]: <data:image/png;base64,AAAA>\n[image2]: <data:image/png;base64,AAAAAA>\n';
+  const out = extractWith(md, [
+    { type: 'jpeg', base64: 'BBBBBBBB' },
+    null,
+    { type: 'png', base64: 'CCCCCCCCCC' },
+  ]);
+  assert.equal(out.markdown, '![a](img:h8) ![b](img:h2) ![c](img:h10)');
+  assert.deepEqual(out.images.map((image) => image.mimeType), ['image/jpeg', 'image/png', 'image/png']);
+});
+
+test('originals are ignored when their count does not match the images found', () => {
+  const md = '![][image1] ![][image1]\n\n[image1]: <data:image/png;base64,AAAA>\n';
+  const out = extractWith(md, [{ type: 'png', base64: 'BBBBBBBB' }]);
+  assert.equal(out.markdown, '![](img:h4) ![](img:h4)');
+});
+
+test('an undefined reference is not counted when pairing originals', () => {
+  const out = extractWith('![][missing] ![](data:image/png;base64,AA)', [{ type: 'png', base64: 'BBBB' }]);
+  assert.equal(out.markdown, '![][missing] ![](img:h4)');
+});
